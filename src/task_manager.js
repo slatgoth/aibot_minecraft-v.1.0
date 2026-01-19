@@ -34,6 +34,10 @@ class TaskManager {
         try {
             if (task.type === 'mine') {
                 await this.handleMiningTask(task);
+            } else if (task.type === 'gather_wood') {
+                await this.handleGatherWoodTask(task);
+            } else if (task.type === 'farm') {
+                await this.handleFarmTask(task);
             } else if (task.type === 'defend') {
                 // Combat logic handled by PVP plugin mostly, but we can monitor safety
                 if (!this.bot.nearestEntity(e => e.type === 'mob' && e.position.distanceTo(this.bot.entity.position) < 10)) {
@@ -51,15 +55,16 @@ class TaskManager {
 
     async handleMiningTask(task) {
         // Check if we have enough
-        const targetItem = this.bot.registry.itemsByName[task.target];
+        const targetName = this.skills.normalizeItemName(task.target);
+        const targetItem = this.bot.registry.itemsByName[targetName];
         if (!targetItem) {
-            this.bot.chat(`что за ${task.target}? не понимаю`);
+            this.bot.chat(`что за ${targetName}? не понимаю`);
             this.stopTask();
             return;
         }
         const count = this.bot.inventory.count(targetItem.id);
         if (count >= task.amount) {
-            this.bot.chat(`собрал ${task.target}, хватит пока`);
+            this.bot.chat(`собрал ${targetName}, хватит пока`);
             this.stopTask();
             return;
         }
@@ -70,7 +75,7 @@ class TaskManager {
 
         // Find closest block
         const positions = this.bot.findBlocks({
-            matching: b => b.name === task.target,
+            matching: b => b.name === targetName,
             maxDistance: 32,
             count: 20
         });
@@ -79,7 +84,7 @@ class TaskManager {
             .find(candidate => candidate && this.skills.isSafeToMine(candidate));
 
         if (!block) {
-            this.bot.chat(`больше не вижу ${task.target} рядом`);
+            this.bot.chat(`больше не вижу ${targetName} рядом`);
             this.stopTask();
             return;
         }
@@ -93,6 +98,120 @@ class TaskManager {
             logger.warn(`Mining step failed: ${e.message}`);
             // Wander a bit?
             this.stopTask();
+        }
+    }
+
+    async handleGatherWoodTask(task) {
+        const defaultTypes = [
+            'oak_log', 'birch_log', 'spruce_log', 'jungle_log',
+            'acacia_log', 'dark_oak_log', 'mangrove_log', 'cherry_log'
+        ];
+        const types = Array.isArray(task.types) && task.types.length > 0
+            ? task.types.map(name => this.skills.normalizeItemName(name))
+            : defaultTypes;
+
+        let total = 0;
+        for (const type of types) {
+            const item = this.bot.registry.itemsByName[type];
+            if (!item) continue;
+            total += this.bot.inventory.count(item.id);
+        }
+        if (total >= task.amount) {
+            this.bot.chat(`дрова собраны (${total})`);
+            this.stopTask();
+            return;
+        }
+
+        if (this.bot.pathfinder.isMoving()) return;
+        if (this.bot.targetDigBlock) return;
+
+        const positions = this.bot.findBlocks({
+            matching: b => types.includes(b.name),
+            maxDistance: 48,
+            count: 30
+        });
+
+        const block = positions
+            .map(pos => this.bot.blockAt(pos))
+            .find(candidate => candidate && this.skills.isSafeToMine(candidate));
+
+        if (!block) {
+            const now = Date.now();
+            if (!task.lastWanderAt || now - task.lastWanderAt > 12000) {
+                task.lastWanderAt = now;
+                await this.skills.wander({ range: 32 });
+            }
+            return;
+        }
+
+        try {
+            await this.bot.collectBlock.collect(block);
+        } catch (e) {
+            logger.warn(`Wood gather failed: ${e.message}`);
+            this.stopTask();
+        }
+    }
+
+    async handleFarmTask(task) {
+        const cropTypes = task.crops && task.crops.length
+            ? task.crops.map(name => this.skills.normalizeItemName(name))
+            : ['wheat', 'potatoes', 'carrots', 'beetroots'];
+
+        const maxAge = {
+            wheat: 7,
+            potatoes: 7,
+            carrots: 7,
+            beetroots: 3
+        };
+        const seedByCrop = {
+            wheat: 'wheat_seeds',
+            potatoes: 'potato',
+            carrots: 'carrot',
+            beetroots: 'beetroot_seeds'
+        };
+
+        if (this.bot.pathfinder.isMoving()) return;
+        if (this.bot.targetDigBlock) return;
+
+        const positions = this.bot.findBlocks({
+            matching: (block) => cropTypes.includes(block.name),
+            maxDistance: 32,
+            count: 30
+        });
+
+        const matureBlock = positions
+            .map(pos => this.bot.blockAt(pos))
+            .find(block => {
+                if (!block) return false;
+                const props = typeof block.getProperties === 'function' ? block.getProperties() : block.properties;
+                const age = props && Number.isFinite(Number(props.age)) ? Number(props.age) : 0;
+                const needed = maxAge[block.name] ?? 7;
+                return age >= needed;
+            });
+
+        if (!matureBlock) {
+            const now = Date.now();
+            if (!task.lastWanderAt || now - task.lastWanderAt > 15000) {
+                task.lastWanderAt = now;
+                await this.skills.wander({ range: 24 });
+            }
+            return;
+        }
+
+        try {
+            await this.bot.pathfinder.goto(new goals.GoalNear(matureBlock.position.x, matureBlock.position.y, matureBlock.position.z, 1));
+            await this.bot.dig(matureBlock);
+            await new Promise(r => setTimeout(r, 200));
+
+            const seedName = seedByCrop[matureBlock.name];
+            const seedItem = seedName ? this.bot.inventory.items().find(i => i.name === seedName) : null;
+            const soil = this.bot.blockAt(matureBlock.position.offset(0, -1, 0));
+            if (seedItem && soil && soil.name === 'farmland') {
+                await this.bot.equip(seedItem, 'hand');
+                await this.bot.placeBlock(soil, new Vec3(0, 1, 0));
+            }
+        } catch (e) {
+            logger.warn(`Farm step failed: ${e.message}`);
         }
     }
 }

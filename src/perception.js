@@ -1,8 +1,10 @@
 const memory = require('./memory_store');
+const config = require('./config');
 
 class Perception {
     constructor(bot) {
         this.bot = bot;
+        this.itemParser = require('prismarine-item')(bot.version);
     }
 
     isStructureBlockName(name) {
@@ -44,12 +46,49 @@ class Perception {
         return '';
     }
 
+    getItemEntityInfo(entity, origin) {
+        const meta = Array.isArray(entity.metadata) ? entity.metadata : [];
+        let stack = null;
+        for (const entry of meta) {
+            if (!entry || typeof entry !== 'object') continue;
+            if (Object.prototype.hasOwnProperty.call(entry, 'itemId')) {
+                stack = entry;
+                break;
+            }
+            if (entry.present && entry.itemId !== undefined) {
+                stack = entry;
+                break;
+            }
+        }
+        if (!stack || stack.itemId === undefined) return null;
+        const item = this.itemParser.fromNotch({
+            type: stack.itemId,
+            count: stack.itemCount || 1,
+            nbt: stack.nbt || stack.itemNbt || null
+        });
+        const distance = origin ? origin.distanceTo(entity.position) : 0;
+        return {
+            name: item && item.name ? item.name : `item_${stack.itemId}`,
+            count: item && item.count ? item.count : (stack.itemCount || 1),
+            position: {
+                x: Math.floor(entity.position.x),
+                y: Math.floor(entity.position.y),
+                z: Math.floor(entity.position.z)
+            },
+            distance: Number(distance.toFixed(1))
+        };
+    }
+
     scan() {
         const bot = this.bot;
         const pos = bot.entity.position;
+        const behavior = config.behavior || {};
+        const entityRadius = Number.isFinite(Number(behavior.scanRadiusEntities)) ? Number(behavior.scanRadiusEntities) : 36;
+        const blockRadius = Number.isFinite(Number(behavior.scanRadiusBlocks)) ? Number(behavior.scanRadiusBlocks) : 12;
+        const dropRadius = Number.isFinite(Number(behavior.scanRadiusDrops)) ? Number(behavior.scanRadiusDrops) : 18;
         
         const entities = Object.values(bot.entities)
-            .filter(e => e.id !== bot.entity.id && e.position.distanceTo(pos) < 20)
+            .filter(e => e.id !== bot.entity.id && e.position.distanceTo(pos) < entityRadius)
             .map(e => ({
                 id: e.id,
                 name: e.name || e.username || 'unknown',
@@ -58,10 +97,15 @@ class Perception {
                 position: e.position
             }));
 
+        const drops = Object.values(bot.entities)
+            .filter(e => e.type === 'object' && e.name === 'item' && e.position.distanceTo(pos) < dropRadius)
+            .map(e => this.getItemEntityInfo(e, pos))
+            .filter(Boolean);
+
         const blocks = bot.findBlocks({
             matching: (block) => block.type !== 0, // Not air
-            maxDistance: 6,
-            count: 24
+            maxDistance: blockRadius,
+            count: 30
         }).map(p => bot.blockAt(p)).filter(Boolean);
 
         const structureBlocks = new Set();
@@ -135,6 +179,7 @@ class Perception {
             nearbyStructures: Array.from(structureBlocks),
             nearbyNatural: Array.from(naturalBlocks),
             nearbySigns: signs,
+            nearbyDrops: drops,
             playerPlacedBlocks: memory.getPlacedBlocksNear(pos, 16, 20),
             players,
             playersOnline: players.map(p => p.name),

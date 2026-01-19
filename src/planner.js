@@ -143,6 +143,7 @@ class Planner {
         const worldFacts = memory.getWorldFacts(20);
         const worldEvents = memory.getWorldEvents(20);
         const socialTarget = this.getSocialTarget(scan.players);
+        const behavior = config.behavior || {};
 
         const context = {
              ...scan,
@@ -221,6 +222,17 @@ class Planner {
             this.markSocialSpoke();
             this.markPlayerSpoke(socialTarget.name);
         }
+
+        const autoPickup = behavior.autoPickupDrops !== false;
+        if (autoPickup && scan.nearbyDrops && scan.nearbyDrops.length > 0 && !isMoving && !this.taskManager.isBusy()) {
+            await this.skills.pickup_item({ radius: behavior.scanRadiusDrops || 18 });
+        }
+
+        const hasVisiblePlayers = scan.players && scan.players.some(p => p.hasEntity);
+        if (!isMoving && !this.taskManager.isBusy() && !hasVisiblePlayers) {
+            const range = Number.isFinite(Number(behavior.wanderRange)) ? Number(behavior.wanderRange) : 24;
+            await this.skills.wander({ range });
+        }
     }
 
     async processUserRequest(username, message, options = {}) {
@@ -283,6 +295,17 @@ class Planner {
                      }
                      this.taskManager.startTask({ type: 'mine', target: target, amount: args.count || 10 });
                      continue;
+                }
+                if (action.name === 'start_gather_wood' || action.name === 'start_wood_task') {
+                    const amount = Number.isFinite(Number(args.count)) ? Number(args.count) : 32;
+                    const types = args.types || args.wood_types || args.woods;
+                    this.taskManager.startTask({ type: 'gather_wood', amount, types });
+                    continue;
+                }
+                if (action.name === 'start_farm_task' || action.name === 'start_farming_task') {
+                    const crops = args.crops || args.crop_types;
+                    this.taskManager.startTask({ type: 'farm', crops });
+                    continue;
                 }
                 
                 if (this.skills[action.name]) {

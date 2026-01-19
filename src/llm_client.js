@@ -127,16 +127,19 @@ class LLMClient {
 9. Context.recentChat содержит последние сообщения всех игроков - учитывай общий чат.
 10. Context.globalChat и Context.worldFacts содержат общую память мира - используй их для контекста.
 11. Context.nearbySigns содержит текст табличек (если видны).
-12. Context.playerPlacedBlocks показывает блоки, которые поставили игроки рядом. Не ломай их.
-13. Никогда не ломай блоки игроков и постройки. Добывай только природные ресурсы.
-14. Если нужно пройти через дверь — используй open_door, а не ломай блок.
-15. Если используешь remember_fact/remember_world_fact, не пиши об этом в чат.
+12. Context.nearbyDrops содержит выпавшие предметы рядом.
+13. Context.playerPlacedBlocks показывает блоки, которые поставили игроки рядом. Не ломай их.
+14. Никогда не ломай блоки игроков и постройки. Добывай только природные ресурсы.
+15. Если нужно пройти через дверь — используй open_door, а не ломай блок.
+16. Если используешь remember_fact/remember_world_fact, не пиши об этом в чат.
+17. Если пользователь пишет предметы по-русски, преобразуй в английские id (oak_log, cobblestone).
 
 Доступные инструменты (Tools):
 - say(text), whisper(player, text), reply_to(player, text)
 - move_to(x, y, z), wander(range), follow(entity_name), stop()
 - look_at(x, y, z), scan_surroundings()
 - mine_block(name, count), place_block(name, x, y, z), activate_block(x, y, z), open_door(), read_sign()
+- pickup_item(name, radius)
 - craft_item(name, count), use_furnace(input_name, fuel_name, count)
 - attack_entity(name), defend()
 - check_inventory(), equip(item_name, slot)
@@ -146,6 +149,8 @@ class LLMClient {
 - mount(entity_type), dismount()
 - remember_fact(player_name, fact), remember_world_fact(fact)
 - start_mining_task(name, count)
+- start_gather_wood(count, types)
+- start_farm_task(crops)
 - get_status()
 - jump(count)
 

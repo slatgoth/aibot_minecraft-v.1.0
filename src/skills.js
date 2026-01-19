@@ -5,12 +5,49 @@ const Vec3 = require('vec3');
 
 const memory = require('./memory_store');
 
+const ITEM_ALIASES = new Map([
+    ['дуб', 'oak_log'],
+    ['дубовое бревно', 'oak_log'],
+    ['бревно дуба', 'oak_log'],
+    ['береза', 'birch_log'],
+    ['береза бревно', 'birch_log'],
+    ['березовое бревно', 'birch_log'],
+    ['ель', 'spruce_log'],
+    ['ель бревно', 'spruce_log'],
+    ['сосна', 'spruce_log'],
+    ['акация', 'acacia_log'],
+    ['тёмный дуб', 'dark_oak_log'],
+    ['темный дуб', 'dark_oak_log'],
+    ['мангров', 'mangrove_log'],
+    ['вишня', 'cherry_log'],
+    ['доски', 'oak_planks'],
+    ['дубовые доски', 'oak_planks'],
+    ['березовые доски', 'birch_planks'],
+    ['ельные доски', 'spruce_planks'],
+    ['каменный', 'stone'],
+    ['камень', 'stone'],
+    ['булыжник', 'cobblestone'],
+    ['уголь', 'coal'],
+    ['железо', 'iron_ore'],
+    ['золото', 'gold_ore']
+]);
+
 class Skills {
     constructor(bot) {
         this.bot = bot;
         this.lastWanderAt = 0;
         this.lastWanderTarget = null;
         this.followHistory = new Map();
+        this.itemParser = require('prismarine-item')(bot.version);
+    }
+
+    normalizeItemName(name) {
+        if (!name) return name;
+        const raw = String(name).toLowerCase().trim();
+        if (ITEM_ALIASES.has(raw)) return ITEM_ALIASES.get(raw);
+        const normalized = raw.replace(/\s+/g, '_');
+        if (ITEM_ALIASES.has(normalized)) return ITEM_ALIASES.get(normalized);
+        return normalized;
     }
 
     isStructureBlockName(name) {
@@ -85,6 +122,29 @@ class Skills {
             }
         }
         return true;
+    }
+
+    getItemEntityName(entity) {
+        const meta = Array.isArray(entity.metadata) ? entity.metadata : [];
+        let stack = null;
+        for (const entry of meta) {
+            if (!entry || typeof entry !== 'object') continue;
+            if (Object.prototype.hasOwnProperty.call(entry, 'itemId')) {
+                stack = entry;
+                break;
+            }
+            if (entry.present && entry.itemId !== undefined) {
+                stack = entry;
+                break;
+            }
+        }
+        if (!stack || stack.itemId === undefined) return null;
+        const item = this.itemParser.fromNotch({
+            type: stack.itemId,
+            count: stack.itemCount || 1,
+            nbt: stack.nbt || stack.itemNbt || null
+        });
+        return item && item.name ? item.name : null;
     }
 
     async remember_fact(args = {}) {
@@ -199,6 +259,7 @@ class Skills {
                 try {
                     await this.bot.equip(item, 'hand');
                     await this.bot.placeBlock(referenceBlock, faceVector);
+                    memory.markBlockPlaced(targetPos, name, this.bot.username);
                     return true;
                 } catch (e) {
                     logger.error(`Place block failed`, e);
@@ -410,6 +471,38 @@ class Skills {
         }
     }
 
+    async pickup_item(args = {}) {
+        const behavior = config.behavior || {};
+        const radius = Number.isFinite(Number(args.radius))
+            ? Number(args.radius)
+            : (Number.isFinite(Number(behavior.scanRadiusDrops)) ? Number(behavior.scanRadiusDrops) : 18);
+        const targetName = args.name ? this.normalizeItemName(args.name) : null;
+        const entities = Object.values(this.bot.entities)
+            .filter(e => e.type === 'object' && e.name === 'item')
+            .map(e => ({ entity: e, name: this.getItemEntityName(e) }))
+            .filter(entry => entry.entity.position.distanceTo(this.bot.entity.position) <= radius);
+
+        const filtered = targetName
+            ? entities.filter(entry => entry.name === targetName)
+            : entities;
+        if (filtered.length === 0) {
+            this.bot.chat(targetName ? `не вижу ${targetName} рядом` : 'дропа не вижу рядом');
+            return;
+        }
+
+        filtered.sort((a, b) => {
+            const da = a.entity.position.distanceTo(this.bot.entity.position);
+            const db = b.entity.position.distanceTo(this.bot.entity.position);
+            return da - db;
+        });
+        const target = filtered[0].entity;
+        try {
+            await this.bot.pathfinder.goto(new goals.GoalNear(target.position.x, target.position.y, target.position.z, 1));
+        } catch (e) {
+            logger.error('Pickup failed', e);
+        }
+    }
+
     async use_chest(args = {}) {
         const { action, item_name } = args;
         const x = Number(args.x);
@@ -574,9 +667,10 @@ class Skills {
             this.bot.chat('что копать?');
             return false;
         }
+        const targetName = this.normalizeItemName(name);
         // Basic implementation - requires more complex logic for finding blocks
         const blocks = this.bot.findBlocks({
-            matching: (block) => block.name === name,
+            matching: (block) => block.name === targetName,
             maxDistance: 32,
             count: count
         });
@@ -587,7 +681,7 @@ class Skills {
             .map(block => block.position);
 
         if (safeBlocks.length === 0) {
-            this.bot.chat(`не вижу ${name} рядом`);
+            this.bot.chat(`не вижу ${targetName} рядом`);
             return false;
         }
 
@@ -619,6 +713,7 @@ class Skills {
                 try {
                     await this.bot.equip(item, 'hand');
                     await this.bot.placeBlock(below, new Vec3(0, 1, 0));
+                    memory.markBlockPlaced(below.position.offset(0, 1, 0), itemName, this.bot.username);
                     return true;
                 } catch (e) {
                     logger.error('Place block near failed', e);
@@ -638,6 +733,7 @@ class Skills {
             await this.bot.pathfinder.goto(new goals.GoalNear(support.position.x, support.position.y, support.position.z, 2));
             await this.bot.equip(item, 'hand');
             await this.bot.placeBlock(support, new Vec3(0, 1, 0));
+            memory.markBlockPlaced(support.position.offset(0, 1, 0), itemName, this.bot.username);
             return true;
         } catch (e) {
             logger.error('Place block near failed', e);
@@ -687,20 +783,21 @@ class Skills {
         const { name } = args;
         const count = Number.isFinite(Number(args.count)) ? Number(args.count) : 1;
         if (!name) return false;
-        logger.info(`Requested craft: ${name} x${count}`);
+        const targetName = this.normalizeItemName(name);
+        logger.info(`Requested craft: ${targetName} x${count}`);
         
         // Anti-spam: check if we already have tool/table
-        if (['crafting_table', 'wooden_pickaxe', 'stone_pickaxe', 'iron_pickaxe', 'furnace'].includes(name)) {
-            const hasItem = this.bot.inventory.items().find(i => i.name === name);
+        if (['crafting_table', 'wooden_pickaxe', 'stone_pickaxe', 'iron_pickaxe', 'furnace'].includes(targetName)) {
+            const hasItem = this.bot.inventory.items().find(i => i.name === targetName);
             if (hasItem) {
-                logger.info(`Skipping craft ${name}, already have it`);
+                logger.info(`Skipping craft ${targetName}, already have it`);
                 return true;
             }
         }
         
-        const itemData = this.bot.registry.itemsByName[name];
+        const itemData = this.bot.registry.itemsByName[targetName];
         if(!itemData) {
-            this.bot.chat(`что такое ${name}? не знаю`);
+            this.bot.chat(`что такое ${targetName}? не знаю`);
             return false;
         }
         
@@ -714,7 +811,7 @@ class Skills {
         }
 
         if(!recipe) {
-            this.bot.chat(`не знаю как крафтить ${name} или нет ресов`);
+            this.bot.chat(`не знаю как крафтить ${targetName} или нет ресов`);
             return false;
         }
 
@@ -727,7 +824,7 @@ class Skills {
             await this.bot.pathfinder.goto(new goals.GoalNear(table.position.x, table.position.y, table.position.z, 2));
             try {
                 await this.bot.craft(recipe, count, table);
-                this.bot.chat(`скрафтил ${name}`);
+                this.bot.chat(`скрафтил ${targetName}`);
                 return true;
             } catch (e) {
                 logger.error("Crafting table failed", e);
@@ -738,7 +835,7 @@ class Skills {
 
         try {
             await this.bot.craft(recipe, count, null);
-            this.bot.chat(`скрафтил ${name}`);
+            this.bot.chat(`скрафтил ${targetName}`);
             return true;
         } catch(e) {
             logger.error("Crafting failed", e);
@@ -755,6 +852,8 @@ class Skills {
             this.bot.chat('что жарить?');
             return false;
         }
+        const normalizedInput = this.normalizeItemName(inputName);
+        const normalizedFuel = fuelName ? this.normalizeItemName(fuelName) : null;
 
         const furnaceBlock = await this.ensureFurnace();
         if (!furnaceBlock) {
@@ -762,14 +861,14 @@ class Skills {
             return false;
         }
 
-        const inputItem = this.bot.inventory.items().find(i => i.name === inputName);
+        const inputItem = this.bot.inventory.items().find(i => i.name === normalizedInput);
         if (!inputItem) {
-            this.bot.chat(`нет ${inputName} для печки`);
+            this.bot.chat(`нет ${normalizedInput} для печки`);
             return false;
         }
 
-        const fuelCandidates = fuelName
-            ? this.bot.inventory.items().filter(i => i.name === fuelName)
+        const fuelCandidates = normalizedFuel
+            ? this.bot.inventory.items().filter(i => i.name === normalizedFuel)
             : this.bot.inventory.items().filter(i => {
                 const name = i.name;
                 return [
@@ -799,7 +898,7 @@ class Skills {
             const fuelCount = Math.min(fuelItem.count, Math.max(1, inputCount));
             await furnace.putFuel(fuelItem.type, null, fuelCount);
             furnace.close();
-            this.bot.chat(`поставил ${inputName} в печку`);
+            this.bot.chat(`поставил ${normalizedInput} в печку`);
             return true;
         } catch (e) {
             logger.error('Furnace use failed', e);
@@ -839,9 +938,10 @@ class Skills {
             return false;
         }
 
-        const item = this.bot.inventory.items().find(i => i.name === item_name);
+        const normalizedItem = this.normalizeItemName(item_name);
+        const item = this.bot.inventory.items().find(i => i.name === normalizedItem);
         if (!item) {
-            this.bot.chat(`у меня нет ${item_name}`);
+            this.bot.chat(`у меня нет ${normalizedItem}`);
             return false;
         }
 

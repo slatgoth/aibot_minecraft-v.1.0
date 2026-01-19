@@ -96,7 +96,13 @@ const baseConfig = {
         maxFactsPerPlayer: 50,
         etiquetteMuteMinutes: 10,
         announceMemory: false,
-        safeMining: true
+        safeMining: true,
+        scanRadiusEntities: 36,
+        scanRadiusBlocks: 12,
+        scanRadiusDrops: 18,
+        autoPickupDrops: true,
+        wanderRange: 28,
+        wanderCooldownMs: 12000
     }
 };
 

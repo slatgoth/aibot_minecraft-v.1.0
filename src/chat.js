@@ -90,6 +90,18 @@ class ChatHandler {
                     await this.planner.skills.read_sign({});
                     return;
                 }
+                const woodMatch = msgLower.match(/(дров|бревен|брёвен|бревна|бревно|дерева)\s*(\d+)?/);
+                if (woodMatch) {
+                    const amount = woodMatch[2] ? Number(woodMatch[2]) : 32;
+                    this.planner.taskManager.startTask({ type: 'gather_wood', amount });
+                    this.bot.chat(`иду за дровами (${amount})`);
+                    return;
+                }
+                if (msgLower.includes('ферм') || msgLower.includes('огород')) {
+                    this.planner.taskManager.startTask({ type: 'farm' });
+                    this.bot.chat('занимаюсь фермой');
+                    return;
+                }
                 if (msgLower.includes('режим выживания')) {
                     this.planner.setMode('survival');
                     this.bot.chat('ладно, включаю режим выживания. не мешайте, я развиваюсь.');
