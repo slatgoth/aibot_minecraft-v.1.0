@@ -1,6 +1,6 @@
 {
   "name": "minecraft-llm-bot",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "Minecraft bot based on Mineflayer and Ollama (DeepSeek)",
   "author": "slatgoth <slatgoth@gmail.com>",
   "main": "electron/main.js",

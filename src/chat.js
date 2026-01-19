@@ -45,7 +45,8 @@ class ChatHandler {
     }
 
     init() {
-        this.bot.on('chat', async (username, message) => {
+        if (this._onChat) return;
+        this._onChat = async (username, message) => {
             if (username === this.bot.username) return;
 
             logger.info(`Chat in: <${username}> ${message}`);
@@ -121,7 +122,14 @@ class ChatHandler {
                 this.markRequest(username);
                 await this.planner.processUserRequest(username, message, { passive: true });
             }
-        });
+        };
+        this.bot.on('chat', this._onChat);
+    }
+
+    stop() {
+        if (!this._onChat) return;
+        this.bot.removeListener('chat', this._onChat);
+        this._onChat = null;
     }
 }
 

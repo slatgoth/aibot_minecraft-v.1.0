@@ -6,11 +6,30 @@ class Reflexes {
         this.bot = bot;
         this.planner = planner;
         this.lastEatTime = 0;
+        this._onTick = null;
+        this._onHealth = null;
     }
 
     start() {
-        this.bot.on('physicsTick', () => this.checkThreats());
-        this.bot.on('health', () => this.checkHealth());
+        if (!this._onTick) {
+            this._onTick = () => this.checkThreats();
+            this.bot.on('physicsTick', this._onTick);
+        }
+        if (!this._onHealth) {
+            this._onHealth = () => this.checkHealth();
+            this.bot.on('health', this._onHealth);
+        }
+    }
+
+    stop() {
+        if (this._onTick) {
+            this.bot.removeListener('physicsTick', this._onTick);
+            this._onTick = null;
+        }
+        if (this._onHealth) {
+            this.bot.removeListener('health', this._onHealth);
+            this._onHealth = null;
+        }
     }
 
     async checkHealth() {

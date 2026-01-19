@@ -127,6 +127,7 @@ class LLMClient {
 9. Context.recentChat содержит последние сообщения всех игроков - учитывай общий чат.
 10. Context.globalChat и Context.worldFacts содержат общую память мира - используй их для контекста.
 11. Никогда не ломай блоки игроков и постройки. Добывай только природные ресурсы.
+12. Если используешь remember_fact/remember_world_fact, не пиши об этом в чат.
 
 Доступные инструменты (Tools):
 - say(text), whisper(player, text), reply_to(player, text)

@@ -19,6 +19,9 @@ let bot = null;
 let planner = null;
 let skills = null;
 let perception = null;
+let chatHandler = null;
+let reflexes = null;
+let observer = null;
 let pendingMode = null;
 let idleInterval = null;
 let reconnectTimer = null;
@@ -63,10 +66,25 @@ const getConnectionConfig = () => {
 const cleanupBot = () => {
     if (idleInterval) clearInterval(idleInterval);
     idleInterval = null;
+    if (planner) {
+        planner.stop();
+    }
+    if (chatHandler) {
+        chatHandler.stop();
+    }
+    if (reflexes) {
+        reflexes.stop();
+    }
+    if (observer) {
+        observer.stop();
+    }
     bot = null;
     planner = null;
     skills = null;
     perception = null;
+    chatHandler = null;
+    reflexes = null;
+    observer = null;
 };
 
 const scheduleReconnect = (reason) => {
@@ -144,9 +162,9 @@ function createBot() {
         skills = new Skills(bot);
         perception = new Perception(bot);
         planner = new Planner(bot, skills, perception);
-        const chatHandler = new ChatHandler(bot, planner);
-        const reflexes = new Reflexes(bot, planner);
-        const observer = new Observer(bot);
+        chatHandler = new ChatHandler(bot, planner);
+        reflexes = new Reflexes(bot, planner);
+        observer = new Observer(bot);
 
         chatHandler.init();
         planner.start();

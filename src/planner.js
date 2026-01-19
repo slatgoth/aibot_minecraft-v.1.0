@@ -95,6 +95,9 @@ class Planner {
 
     stop() {
         this.isRunning = false;
+        if (this.taskManager) {
+            this.taskManager.stopTask();
+        }
     }
 
     setMode(mode) {

@@ -7,16 +7,56 @@ class Observer {
         this.bot = bot;
         this.lastCommentTime = 0;
         this.valuableBlocks = ['diamond_ore', 'gold_ore', 'iron_ore', 'ancient_debris'];
+        this._onWeather = null;
+        this._onEntity = null;
+        this._onBlockUpdate = null;
+        this._onSystemMessage = null;
+        this._banterTimer = null;
         
         // Random banter loop
-        setInterval(() => this.randomBanter(), 45000 + Math.random() * 60000); // Every 45-105 seconds
+        this._banterTimer = setInterval(() => this.randomBanter(), 45000 + Math.random() * 60000); // Every 45-105 seconds
     }
 
     start() {
-        this.bot.on('weatherUpdate', () => this.handleWeather());
-        this.bot.on('entitySpawn', (entity) => this.handleEntity(entity));
-        this.bot.on('blockUpdate', (oldBlock, newBlock) => this.handleBlockUpdate(oldBlock, newBlock));
-        this.bot.on('messagestr', (msg, pos, json) => this.handleSystemMessage(msg, json));
+        if (!this._onWeather) {
+            this._onWeather = () => this.handleWeather();
+            this.bot.on('weatherUpdate', this._onWeather);
+        }
+        if (!this._onEntity) {
+            this._onEntity = (entity) => this.handleEntity(entity);
+            this.bot.on('entitySpawn', this._onEntity);
+        }
+        if (!this._onBlockUpdate) {
+            this._onBlockUpdate = (oldBlock, newBlock) => this.handleBlockUpdate(oldBlock, newBlock);
+            this.bot.on('blockUpdate', this._onBlockUpdate);
+        }
+        if (!this._onSystemMessage) {
+            this._onSystemMessage = (msg, pos, json) => this.handleSystemMessage(msg, json);
+            this.bot.on('messagestr', this._onSystemMessage);
+        }
+    }
+
+    stop() {
+        if (this._banterTimer) {
+            clearInterval(this._banterTimer);
+            this._banterTimer = null;
+        }
+        if (this._onWeather) {
+            this.bot.removeListener('weatherUpdate', this._onWeather);
+            this._onWeather = null;
+        }
+        if (this._onEntity) {
+            this.bot.removeListener('entitySpawn', this._onEntity);
+            this._onEntity = null;
+        }
+        if (this._onBlockUpdate) {
+            this.bot.removeListener('blockUpdate', this._onBlockUpdate);
+            this._onBlockUpdate = null;
+        }
+        if (this._onSystemMessage) {
+            this.bot.removeListener('messagestr', this._onSystemMessage);
+            this._onSystemMessage = null;
+        }
     }
 
     canComment() {
