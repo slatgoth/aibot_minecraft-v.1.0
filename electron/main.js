@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const net = require('net');
@@ -41,6 +41,19 @@ const writeFileSafe = (filePath, content) => {
 const writeJsonSafe = (filePath, data) => {
     const serialized = JSON.stringify(data, null, 2);
     writeFileSafe(filePath, serialized);
+};
+
+const sendLog = (channel, text) => {
+    if (!mainWindow || !text) return;
+    mainWindow.webContents.send(channel, { text: String(text) });
+};
+
+const attachProcessLogs = (proc, channel) => {
+    if (!proc || !proc.stdout || !proc.stderr) return;
+    proc.stdout.setEncoding('utf8');
+    proc.stderr.setEncoding('utf8');
+    proc.stdout.on('data', (chunk) => sendLog(channel, chunk));
+    proc.stderr.on('data', (chunk) => sendLog(channel, chunk));
 };
 
 const copyDirRecursive = (source, target) => {
@@ -311,6 +324,7 @@ const startViaProxy = () => {
         cwd: settings.root,
         stdio: 'pipe'
     });
+    attachProcessLogs(viaProxyProcess, 'proxy-log');
     viaProxyProcess.once('error', (err) => {
         viaProxyProcess = null;
         if (mainWindow) {
@@ -370,6 +384,7 @@ const startBot = async () => {
         execPath: process.execPath,
         stdio: ['ignore', 'pipe', 'pipe', 'ipc']
     });
+    attachProcessLogs(botProcess, 'bot-log');
     botProcess.once('error', (err) => {
         botProcess = null;
         if (mainWindow) {
@@ -557,3 +572,9 @@ ipcMain.handle('viaproxy-status', async () => ({
     root: getViaProxySettings().root,
     jar: getViaProxySettings().jar
 }));
+
+ipcMain.handle('open-logs-folder', async () => {
+    const logsRoot = (currentConfig.paths && currentConfig.paths.logs) || config.paths.logs;
+    const result = await shell.openPath(logsRoot);
+    return { ok: result === '', path: logsRoot, error: result || null };
+});

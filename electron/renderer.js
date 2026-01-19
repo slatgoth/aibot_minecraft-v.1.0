@@ -51,10 +51,28 @@ const saveStatus = qs('saveStatus');
 const viaProxyRunStatus = qs('viaProxyRunStatus');
 const botRunStatus = qs('botRunStatus');
 const botStatusHint = qs('botStatusHint');
+const botLog = qs('botLog');
+const proxyLog = qs('proxyLog');
+
+const botLogBuffer = [];
+const proxyLogBuffer = [];
+const maxLogLines = 200;
 
 const readNumber = (value, fallback) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const appendLog = (buffer, element, chunk) => {
+    if (!element || !chunk) return;
+    const lines = String(chunk).split(/\r?\n/).filter(line => line.length > 0);
+    if (lines.length === 0) return;
+    buffer.push(...lines);
+    if (buffer.length > maxLogLines) {
+        buffer.splice(0, buffer.length - maxLogLines);
+    }
+    element.value = buffer.join('\n');
+    element.scrollTop = element.scrollHeight;
 };
 
 const parsePrefixes = (raw) => {
@@ -253,10 +271,13 @@ const startBot = async () => {
     await saveConfig();
     const result = await window.api.startBot();
     if (!result.ok) {
-        botRunStatus.textContent = `ошибка: ${result.error || 'не удалось'}`;
+        const message = result.error || 'не удалось';
+        botRunStatus.textContent = `ошибка: ${message}`;
+        botStatusHint.textContent = `ошибка запуска: ${message}`;
     } else {
         botRunStatus.textContent = result.status || 'запускается';
     }
+    return result;
 };
 
 const stopBot = async () => {
@@ -272,6 +293,7 @@ const startViaProxy = async () => {
     } else {
         viaProxyRunStatus.textContent = result.status || 'запускается';
     }
+    return result;
 };
 
 const stopViaProxy = async () => {
@@ -308,7 +330,8 @@ qs('startViaProxyBtn').addEventListener('click', startViaProxy);
 qs('stopViaProxyBtn').addEventListener('click', stopViaProxy);
 qs('applyUsernameBtn').addEventListener('click', applyUsername);
 qs('startAllBtn').addEventListener('click', async () => {
-    await startViaProxy();
+    const proxyResult = await startViaProxy();
+    if (proxyResult && proxyResult.ok === false) return;
     await startBot();
 });
 qs('setModeBtn').addEventListener('click', async () => {
@@ -331,6 +354,9 @@ qs('sendCommandBtn').addEventListener('click', async () => {
 });
 qs('reloadPromptBtn').addEventListener('click', async () => {
     await window.api.botCommand('reload_prompt', {});
+});
+qs('openLogsBtn').addEventListener('click', async () => {
+    await window.api.openLogsFolder();
 });
 qs('useModelBtn').addEventListener('click', () => {
     if (modelSelect.value) {
@@ -358,6 +384,12 @@ window.api.onBotError((payload) => {
 });
 window.api.onProxyError((payload) => {
     viaProxyRunStatus.textContent = payload && payload.error ? `ошибка: ${payload.error}` : 'ошибка запуска';
+});
+window.api.onBotLog((payload) => {
+    appendLog(botLogBuffer, botLog, payload && payload.text ? payload.text : '');
+});
+window.api.onProxyLog((payload) => {
+    appendLog(proxyLogBuffer, proxyLog, payload && payload.text ? payload.text : '');
 });
 setInterval(refreshProcessStatuses, 5000);
 

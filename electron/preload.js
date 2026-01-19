@@ -16,7 +16,10 @@ contextBridge.exposeInMainWorld('api', {
     startViaProxy: () => ipcRenderer.invoke('start-viaproxy'),
     stopViaProxy: () => ipcRenderer.invoke('stop-viaproxy'),
     getViaProxyStatus: () => ipcRenderer.invoke('viaproxy-status'),
+    openLogsFolder: () => ipcRenderer.invoke('open-logs-folder'),
     onBotStatus: (handler) => ipcRenderer.on('bot-status', (_, status) => handler(status)),
     onBotError: (handler) => ipcRenderer.on('bot-error', (_, payload) => handler(payload)),
-    onProxyError: (handler) => ipcRenderer.on('proxy-error', (_, payload) => handler(payload))
+    onProxyError: (handler) => ipcRenderer.on('proxy-error', (_, payload) => handler(payload)),
+    onBotLog: (handler) => ipcRenderer.on('bot-log', (_, payload) => handler(payload)),
+    onProxyLog: (handler) => ipcRenderer.on('proxy-log', (_, payload) => handler(payload))
 });

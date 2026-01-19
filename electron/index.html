@@ -68,6 +68,23 @@
     </section>
 
     <section class="card">
+      <h2>Логи</h2>
+      <div class="actions">
+        <button id="openLogsBtn" class="ghost">Открыть папку логов</button>
+      </div>
+      <div class="log-grid">
+        <div>
+          <div class="label">Бот</div>
+          <textarea id="botLog" class="log-output" rows="10" readonly></textarea>
+        </div>
+        <div>
+          <div class="label">ViaProxy</div>
+          <textarea id="proxyLog" class="log-output" rows="10" readonly></textarea>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
       <h2>Подключение бота</h2>
       <div class="grid">
         <label>BOT_HOST<input id="botHost" type="text" /></label>

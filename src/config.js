@@ -34,7 +34,7 @@ const logsRoot = process.env.BOT_LOGS_ROOT
 
 const baseConfig = {
     bot: {
-        host: 'localhost', // Connected via local proxy port usually
+        host: '127.0.0.1', // Connected via local proxy port usually
         port: 25568,       // Proxy port configured in viaproxy.yml
         username: 'bot',
         version: '1.21.4', // Connection version (proxy handles target)
