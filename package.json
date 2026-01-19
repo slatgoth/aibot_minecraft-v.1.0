@@ -1,13 +1,14 @@
 {
   "name": "minecraft-llm-bot",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Minecraft bot based on Mineflayer and Ollama (DeepSeek)",
   "author": "slatgoth <slatgoth@gmail.com>",
   "main": "electron/main.js",
   "scripts": {
     "start": "node src/index.js",
     "app": "electron electron/main.js",
-    "dist": "electron-builder --win --x64"
+    "dist": "electron-builder --win --x64",
+    "dist:exe": "electron-builder --win --x64 && node tools/prepare-release.js"
   },
   "dependencies": {
     "mineflayer": "^4.20.1",

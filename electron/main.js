@@ -8,12 +8,13 @@ const config = require('../src/config');
 
 const appDataRoot = app.getPath('appData');
 const userDataRoot = path.join(appDataRoot, 'minecraft-llm-bot');
+const viaProxyUserRoot = path.join(userDataRoot, 'viaproxy');
 const configPath = path.join(userDataRoot, 'config.user.json');
 const promptDefaultPath = path.join(app.getAppPath(), 'prompts', 'system_prompt.default.txt');
 const promptUserPath = path.join(userDataRoot, 'system_prompt.txt');
 
 const getResourceRoot = () => (app.isPackaged ? process.resourcesPath : app.getAppPath());
-const defaultViaProxyRoot = app.isPackaged
+const resourceViaProxyRoot = app.isPackaged
     ? path.join(getResourceRoot(), 'viaproxy')
     : path.join(getResourceRoot(), 'tools', 'viaproxy');
 
@@ -40,6 +41,146 @@ const writeFileSafe = (filePath, content) => {
 const writeJsonSafe = (filePath, data) => {
     const serialized = JSON.stringify(data, null, 2);
     writeFileSafe(filePath, serialized);
+};
+
+const copyDirRecursive = (source, target) => {
+    if (!source || !fs.existsSync(source)) return;
+    fs.mkdirSync(target, { recursive: true });
+    const entries = fs.readdirSync(source, { withFileTypes: true });
+    for (const entry of entries) {
+        const srcPath = path.join(source, entry.name);
+        const targetPath = path.join(target, entry.name);
+        if (entry.isDirectory()) {
+            copyDirRecursive(srcPath, targetPath);
+        } else if (entry.isFile()) {
+            fs.copyFileSync(srcPath, targetPath);
+        }
+    }
+};
+
+const isWritableDir = (dirPath) => {
+    try {
+        fs.accessSync(dirPath, fs.constants.W_OK);
+        return true;
+    } catch (e) {
+        return false;
+    }
+};
+
+const ensureViaProxyRoot = () => {
+    if (!resourceViaProxyRoot || !fs.existsSync(resourceViaProxyRoot)) {
+        return resourceViaProxyRoot;
+    }
+    if (fs.existsSync(viaProxyUserRoot) && fs.existsSync(path.join(viaProxyUserRoot, 'viaproxy.yml'))) {
+        return viaProxyUserRoot;
+    }
+    copyDirRecursive(resourceViaProxyRoot, viaProxyUserRoot);
+    return viaProxyUserRoot;
+};
+
+const resolveViaProxyRoot = (root) => {
+    if (root && fs.existsSync(root)) {
+        if (app.isPackaged && root.startsWith(process.resourcesPath)) {
+            return ensureViaProxyRoot();
+        }
+        if (isWritableDir(root)) return root;
+        return ensureViaProxyRoot();
+    }
+    if (app.isPackaged) {
+        return ensureViaProxyRoot();
+    }
+    return resourceViaProxyRoot;
+};
+
+const stripProtocol = (value) => String(value || '').replace(/^https?:\/\//i, '').trim();
+
+const formatAddress = (host, port) => {
+    const cleanHost = stripProtocol(host);
+    const cleanPort = Number(port);
+    if (!cleanHost || !Number.isFinite(cleanPort)) return null;
+    return `${cleanHost}:${cleanPort}`;
+};
+
+const parseAddress = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return { host: '', port: null };
+    const parts = raw.split(':');
+    if (parts.length < 2) return { host: raw, port: null };
+    const port = Number(parts.pop());
+    const host = parts.join(':');
+    return { host, port: Number.isFinite(port) ? port : null };
+};
+
+const readViaProxyConfig = (root) => {
+    try {
+        if (!root) return null;
+        const filePath = path.join(root, 'viaproxy.yml');
+        if (!fs.existsSync(filePath)) return null;
+        const raw = fs.readFileSync(filePath, 'utf8');
+        const config = {};
+        raw.split(/\r?\n/).forEach((line) => {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) return;
+            const match = trimmed.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+            if (!match) return;
+            let value = match[2].trim();
+            value = value.replace(/^['"]|['"]$/g, '');
+            config[match[1]] = value;
+        });
+        return config;
+    } catch (e) {
+        return null;
+    }
+};
+
+const updateViaProxyConfig = (root, updates) => {
+    try {
+        if (!root) return { ok: false, error: 'ViaProxy root missing' };
+        const filePath = path.join(root, 'viaproxy.yml');
+        if (!fs.existsSync(filePath)) return { ok: false, error: 'viaproxy.yml not found' };
+        const raw = fs.readFileSync(filePath, 'utf8');
+        const lineEnding = raw.includes('\r\n') ? '\r\n' : '\n';
+        let lines = raw.split(/\r?\n/);
+        let changed = false;
+
+        Object.entries(updates).forEach(([key, value]) => {
+            if (!value) return;
+            let found = false;
+            const keyPattern = new RegExp(`^\\s*${key}\\s*:`, 'i');
+            lines = lines.map((line) => {
+                if (keyPattern.test(line) && !line.trim().startsWith('#')) {
+                    found = true;
+                    const nextLine = `${key}: ${value}`;
+                    if (line.trim() !== nextLine) {
+                        changed = true;
+                        return nextLine;
+                    }
+                }
+                return line;
+            });
+            if (!found) {
+                lines.push(`${key}: ${value}`);
+                changed = true;
+            }
+        });
+
+        if (changed) {
+            fs.writeFileSync(filePath, lines.join(lineEnding), 'utf8');
+        }
+        return { ok: true, changed };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+};
+
+const syncViaProxyConfig = (root, botConfig, proxyConfig) => {
+    const bindAddress = formatAddress(botConfig.host, botConfig.port);
+    const targetAddress = formatAddress(proxyConfig.targetHost, proxyConfig.targetPort);
+    if (!bindAddress || !targetAddress) return { ok: true, skipped: true };
+    return updateViaProxyConfig(root, {
+        'bind-address': bindAddress,
+        'target-address': targetAddress
+    });
 };
 
 const normalizeUrl = (raw) => {
@@ -132,11 +273,8 @@ const findViaProxyJar = (root) => {
 
 const getViaProxySettings = () => {
     const viaProxy = currentConfig.viaProxy || {};
-    let root = viaProxy.root || viaProxy.path || '';
+    let root = resolveViaProxyRoot(viaProxy.root || viaProxy.path || '');
     let jar = viaProxy.jar || '';
-    if (!root || !fs.existsSync(root)) {
-        root = defaultViaProxyRoot;
-    }
     if (!jar || !fs.existsSync(jar)) {
         jar = findViaProxyJar(root);
     }
@@ -149,12 +287,23 @@ const getViaProxySettings = () => {
             .map(arg => arg.trim())
             .filter(Boolean);
     const autoStart = Boolean(viaProxy.autoStart);
-    return { root, jar, javaPath, args, autoStart };
+    const syncConfig = viaProxy.syncConfig !== false;
+    return { root, jar, javaPath, args, autoStart, syncConfig };
 };
 
 const startViaProxy = () => {
     if (viaProxyProcess) return { ok: true, status: 'already_running' };
     const settings = getViaProxySettings();
+    if (settings.syncConfig) {
+        const syncResult = syncViaProxyConfig(
+            settings.root,
+            currentConfig.bot || config.bot,
+            currentConfig.proxy || config.proxy
+        );
+        if (!syncResult.ok && !syncResult.skipped) {
+            return { ok: false, error: syncResult.error || 'ViaProxy config sync failed' };
+        }
+    }
     if (!settings.jar) {
         return { ok: false, error: 'ViaProxy jar not found' };
     }
@@ -168,8 +317,11 @@ const startViaProxy = () => {
             mainWindow.webContents.send('proxy-error', { error: err.message });
         }
     });
-    viaProxyProcess.on('exit', () => {
+    viaProxyProcess.on('exit', (code, signal) => {
         viaProxyProcess = null;
+        if (mainWindow && code) {
+            mainWindow.webContents.send('proxy-error', { error: `ViaProxy exited (${code || signal || 'unknown'})` });
+        }
     });
     return { ok: true, status: 'started' };
 };
@@ -187,6 +339,17 @@ const startBot = async () => {
     if (botProcess) return { ok: true, status: 'already_running' };
     const botConfig = currentConfig.bot || config.bot;
     const launcher = currentConfig.launcher || {};
+    const proxySettings = getViaProxySettings();
+    const proxyConfig = readViaProxyConfig(proxySettings.root);
+    if (proxyConfig) {
+        const bind = parseAddress(proxyConfig['bind-address']);
+        const targetAddress = proxyConfig['target-address'] || '';
+        const localHosts = new Set(['127.0.0.1', 'localhost', '0.0.0.0']);
+        const usesProxy = bind.port && Number(botConfig.port) === bind.port && localHosts.has(String(botConfig.host || ''));
+        if (usesProxy && (!targetAddress || targetAddress.includes('example.com'))) {
+            return { ok: false, error: 'ViaProxy target-address не настроен' };
+        }
+    }
     const waitForProxy = launcher.waitForProxy !== false;
     const waitTimeout = Number.isFinite(Number(launcher.waitForProxyTimeoutMs))
         ? Number(launcher.waitForProxyTimeoutMs)
@@ -229,6 +392,18 @@ const startBot = async () => {
         }
     });
     return { ok: true, status: 'started' };
+};
+
+const startBotWithProxy = async () => {
+    if (getViaProxySettings().autoStart) {
+        const proxyResult = startViaProxy();
+        if (!proxyResult.ok) {
+            if (mainWindow) {
+                mainWindow.webContents.send('proxy-error', { error: proxyResult.error || 'ViaProxy start failed' });
+            }
+        }
+    }
+    return startBot();
 };
 
 const stopBot = () => {
@@ -301,7 +476,7 @@ app.whenReady().then(() => {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
     if (currentConfig.launcher && currentConfig.launcher.autoStartBot) {
-        startBot().catch(() => {});
+        startBotWithProxy().catch(() => {});
     }
 });
 
@@ -310,12 +485,13 @@ app.on('window-all-closed', () => {
 });
 
 ipcMain.handle('get-config', async () => {
+    const defaultRoot = resolveViaProxyRoot('');
     return {
         config: currentConfig,
         configPath,
         defaults: {
-            viaProxyRoot: defaultViaProxyRoot,
-            viaProxyJar: findViaProxyJar(defaultViaProxyRoot)
+            viaProxyRoot: defaultRoot,
+            viaProxyJar: findViaProxyJar(defaultRoot)
         }
     };
 });
@@ -323,7 +499,12 @@ ipcMain.handle('get-config', async () => {
 ipcMain.handle('save-config', async (_, payload) => {
     currentConfig = payload;
     writeJsonSafe(configPath, payload);
-    return { ok: true, path: configPath };
+    let syncResult = null;
+    if (payload && payload.viaProxy && payload.viaProxy.syncConfig !== false) {
+        const settings = getViaProxySettings();
+        syncResult = syncViaProxyConfig(settings.root, currentConfig.bot || config.bot, currentConfig.proxy || config.proxy);
+    }
+    return { ok: true, path: configPath, sync: syncResult };
 });
 
 ipcMain.handle('get-prompt', async () => {
@@ -361,13 +542,7 @@ ipcMain.handle('check-proxy', async (_, host, port) => {
 });
 
 ipcMain.handle('start-bot', async () => {
-    if (getViaProxySettings().autoStart) {
-        const proxyResult = startViaProxy();
-        if (!proxyResult.ok && mainWindow) {
-            mainWindow.webContents.send('proxy-error', { error: proxyResult.error || 'ViaProxy start failed' });
-        }
-    }
-    return startBot();
+    return startBotWithProxy();
 });
 
 ipcMain.handle('stop-bot', async () => stopBot());

@@ -9,4 +9,5 @@ dist/
 build/
 tools/viaproxy/logs/
 Minecraft LLM Bot*.lnk
+Minecraft LLM Bot*.exe
 tools/viaproxy/ViaLoader/viabedrock/blob_cache/

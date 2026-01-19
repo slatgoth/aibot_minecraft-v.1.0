@@ -25,6 +25,28 @@ let reconnectTimer = null;
 let reconnectAttempts = 0;
 let shuttingDown = false;
 
+const formatKickReason = (reason) => {
+    if (!reason) return 'kicked';
+    if (typeof reason === 'string') return reason;
+    if (reason && typeof reason === 'object' && typeof reason.text === 'string') return reason.text;
+    try {
+        return JSON.stringify(reason);
+    } catch (e) {
+        return String(reason);
+    }
+};
+
+const formatErrorMessage = (err) => {
+    if (!err) return 'error';
+    if (typeof err === 'string') return err;
+    const code = err.code ? `${err.code}: ` : '';
+    const message = err.message || err.reason || err.toString();
+    if (err.code === 'ECONNRESET') {
+        return `${code}${message} (проверь ViaProxy target-address и версию сервера)`;
+    }
+    return `${code}${message || 'error'}`;
+};
+
 const getConnectionConfig = () => {
     const connection = config.connection || {};
     return {
@@ -155,12 +177,14 @@ function createBot() {
 
     bot.on('kicked', (reason) => {
         logger.error('Bot kicked', reason);
+        sendToParent({ type: 'bot_error', error: formatKickReason(reason) });
         sendToParent({ type: 'bot_status', data: getStatus() });
         cleanupBot();
         scheduleReconnect('kicked');
     });
     bot.on('error', (err) => {
         logger.error('Bot error', err);
+        sendToParent({ type: 'bot_error', error: formatErrorMessage(err) });
         sendToParent({ type: 'bot_status', data: getStatus() });
         cleanupBot();
         scheduleReconnect(err && err.code ? err.code : 'error');

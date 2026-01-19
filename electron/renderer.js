@@ -17,6 +17,7 @@ const fields = {
     javaPath: qs('javaPath'),
     viaProxyArgs: qs('viaProxyArgs'),
     autoStartProxy: qs('autoStartProxy'),
+    syncViaProxyConfig: qs('syncViaProxyConfig'),
     autoStartBot: qs('autoStartBot'),
     autoReconnect: qs('autoReconnect'),
     reconnectDelayMs: qs('reconnectDelayMs'),
@@ -85,6 +86,7 @@ const fillForm = (config, defaults) => {
     fields.javaPath.value = viaProxy.javaPath || '';
     fields.viaProxyArgs.value = Array.isArray(viaProxy.args) ? viaProxy.args.join(' ') : (viaProxy.args || '');
     fields.autoStartProxy.value = String(Boolean(viaProxy.autoStart));
+    fields.syncViaProxyConfig.value = String(viaProxy.syncConfig !== false);
     fields.autoStartBot.value = String(Boolean(config.launcher?.autoStartBot));
     fields.autoReconnect.value = String(config.connection?.autoReconnect !== false);
     fields.reconnectDelayMs.value = config.connection?.reconnectDelayMs ?? 5000;
@@ -128,7 +130,8 @@ const buildConfigPayload = () => {
             jar: fields.viaProxyJar.value.trim(),
             javaPath: fields.javaPath.value.trim(),
             args: fields.viaProxyArgs.value.trim(),
-            autoStart: fields.autoStartProxy.value === 'true'
+            autoStart: fields.autoStartProxy.value === 'true',
+            syncConfig: fields.syncViaProxyConfig.value === 'true'
         },
         connection: {
             autoReconnect: fields.autoReconnect.value === 'true',
@@ -201,7 +204,15 @@ const checkProxy = async () => {
 const saveConfig = async () => {
     const payload = buildConfigPayload();
     const result = await window.api.saveConfig(payload);
-    saveStatus.textContent = result.ok ? `сохранено: ${result.path}` : 'ошибка сохранения';
+    if (!result.ok) {
+        saveStatus.textContent = 'ошибка сохранения';
+        return;
+    }
+    if (result.sync && result.sync.ok === false) {
+        saveStatus.textContent = `сохранено: ${result.path} (ViaProxy: ${result.sync.error})`;
+        return;
+    }
+    saveStatus.textContent = `сохранено: ${result.path}`;
 };
 
 const savePrompt = async () => {

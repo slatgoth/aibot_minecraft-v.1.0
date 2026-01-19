@@ -25,6 +25,12 @@ const getUserDataRoot = () => {
 const userDataRoot = getUserDataRoot();
 const configPathRepo = path.join(repoRoot, 'config.user.json');
 const configPathUserData = userDataRoot ? path.join(userDataRoot, 'config.user.json') : null;
+const dataRoot = process.env.BOT_DATA_ROOT
+    ? path.resolve(process.env.BOT_DATA_ROOT)
+    : (userDataRoot ? path.join(userDataRoot, 'data') : path.join(repoRoot, 'data'));
+const logsRoot = process.env.BOT_LOGS_ROOT
+    ? path.resolve(process.env.BOT_LOGS_ROOT)
+    : (userDataRoot ? path.join(userDataRoot, 'logs') : path.join(repoRoot, 'logs'));
 
 const baseConfig = {
     bot: {
@@ -50,7 +56,8 @@ const baseConfig = {
         jar: '',
         javaPath: '',
         args: '',
-        autoStart: true
+        autoStart: true,
+        syncConfig: true
     },
     connection: {
         autoReconnect: true,
@@ -63,8 +70,8 @@ const baseConfig = {
         waitForProxyTimeoutMs: 15000
     },
     paths: {
-        memory: path.join(repoRoot, 'data/memory.json'),
-        logs: path.join(repoRoot, 'logs'),
+        memory: path.join(dataRoot, 'memory.json'),
+        logs: logsRoot,
         items: path.join(repoRoot, 'data/minecraft_1.21.11_blocks_items_en.json'),
         recipes: path.join(repoRoot, 'data/mineflayer_recipes_minecraft_1.21.11.json'),
         systemPromptDefault: path.join(repoRoot, 'prompts/system_prompt.default.txt'),
