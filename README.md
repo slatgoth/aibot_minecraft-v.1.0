@@ -13,7 +13,7 @@
    - https://github.com/slatgoth/aibot_minecraft/releases
 4. Запусти EXE из архива Releases.
 5. В панели заполнить ViaProxy настройки (править yml вручную не нужно):
-   - `MC_SERVER_HOST/MC_SERVER_PORT` — адрес сервера (например, `maryflorett.aternos.me:25565`).
+   - `MC_SERVER_HOST/MC_SERVER_PORT` — адрес сервера (например, `example:25565`).
    - `auth-method`: NONE для оффлайн сервера, ACCOUNT для онлайн сервера.
    - `target-version`: версия сервера (например 1.21.11) или Auto Detect.
 6. В панели подключения бота:
