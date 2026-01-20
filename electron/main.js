@@ -277,7 +277,13 @@ const updateViaProxyConfig = (root, updates) => {
     try {
         if (!root) return { ok: false, error: 'ViaProxy root missing' };
         const filePath = path.join(root, 'viaproxy.yml');
-        if (!fs.existsSync(filePath)) return { ok: false, error: 'viaproxy.yml not found' };
+        if (!fs.existsSync(filePath)) {
+            fs.mkdirSync(root, { recursive: true });
+            const lines = Object.entries(updates)
+                .filter(([, value]) => value !== undefined && value !== null)
+                .map(([key, value]) => `${key}: ${String(value)}`);
+            fs.writeFileSync(filePath, lines.join('\n') + '\n', 'utf8');
+        }
         const raw = fs.readFileSync(filePath, 'utf8');
         const lineEnding = raw.includes('\r\n') ? '\r\n' : '\n';
         let lines = raw.split(/\r?\n/);
